@@ -219,8 +219,8 @@ def video2summary(h5_dir,frm_dir,output_dir):
             os.mkdir(osp.join(output_dir, video_name))
         vid_writer = cv2.VideoWriter(
             #osp.join(args.save_dir, dict1[key], args.save_name),
-            osp.join(output_dir,video_name, "summary.mp4"),
-            cv2.VideoWriter_fourcc(*'MP4V'),
+            osp.join(output_dir,video_name, "summary.avi"),
+            cv2.VideoWriter_fourcc(*'DIVX'),
             fps,#args.fps,
             (args.width, args.height),
         )
