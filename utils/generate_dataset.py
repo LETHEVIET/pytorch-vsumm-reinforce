@@ -9,24 +9,30 @@
 """
 import os, sys
 sys.path.append('../')
-from networks.CNN import ResNet
 from utils.KTS.cpd_auto import cpd_auto
 from tqdm import tqdm
 import math
 import cv2
 import numpy as np
 import h5py
+from feature_extractor import YouTube8MFeatureExtractor
+from PIL import Image
+import argparse
+parser = argparse.ArgumentParser("name")
+###
+parser.add_argument('--video-dir', default='', help='')
+parser.add_argument('--output-dir', default='', help='')
 
 class Generate_Dataset:
-    def __init__(self, video_path, save_path):
-        self.resnet = ResNet()
+    def __init__(self, video_path, save_path,frame_dir,train_data):
         self.dataset = {}
         self.video_list = []
         self.video_path = ''
-        self.frame_root_path = './frames'
+        self.frame_root_path = frame_dir
         self.h5_file = h5py.File(save_path, 'w')
-
+        self.extractor = YouTube8MFeatureExtractor()
         self._set_video_list(video_path)
+        self.train_data = train_data
 
     def _set_video_list(self, video_path):
         if os.path.isdir(video_path):
@@ -44,10 +50,11 @@ class Generate_Dataset:
 
     def _extract_feature(self, frame):
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        frame = cv2.resize(frame, (224, 224))
-        res_pool5 = self.resnet(frame)
-        frame_feat = res_pool5.cpu().data.numpy().flatten()
-
+        #frame = cv2.resize(frame, (224, 224))
+        res_pool5 = self.extractor.extract_rgb_frame_features(frame)
+        #res_pool5 = self.resnet(frame)
+        frame_feat =res_pool5 #res_pool5.cpu().data.numpy().flatten()
+        #print(frame_feat.shape)
         return frame_feat
 
     def _get_change_points(self, video_feat, n_frame, fps):
@@ -68,7 +75,7 @@ class Generate_Dataset:
 
         temp_n_frame_per_seg = []
         for change_points_idx in range(len(change_points)):
-            n_frame = change_points[change_points_idx][1] - change_points[change_points_idx][0]
+            n_frame = change_points[change_points_idx][1] - change_points[change_points_idx][0] +1
             temp_n_frame_per_seg.append(n_frame)
         n_frame_per_seg = np.array(list(temp_n_frame_per_seg))
 
@@ -85,12 +92,12 @@ class Generate_Dataset:
                 video_path = os.path.join(self.video_path, video_filename)
 
             video_basename = os.path.basename(video_path).split('.')[0]
-
+            print(video_filename)
             if not os.path.exists(os.path.join(self.frame_root_path, video_basename)):
-                os.mkdir(os.path.join(self.frame_root_path, video_basename))
+                os.makedirs(os.path.join(self.frame_root_path, video_basename))
 
             video_capture = cv2.VideoCapture(video_path)
-
+            video_dir = video_path
             fps = video_capture.get(cv2.CAP_PROP_FPS)
             n_frames = int(video_capture.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -98,7 +105,8 @@ class Generate_Dataset:
             picks = []
             video_feat = None
             video_feat_for_train = None
-            for frame_idx in tqdm(range(n_frames-1)):
+            print(n_frames)
+            for frame_idx in tqdm(range(n_frames)):
                 success, frame = video_capture.read()
                 if success:
                     frame_feat = self._extract_feature(frame)
@@ -115,9 +123,13 @@ class Generate_Dataset:
                         video_feat = frame_feat
                     else:
                         video_feat = np.vstack((video_feat, frame_feat))
+                    #train_dataset
+                    if self.train_data:
+                        img_filename = "{}.jpg".format(str(frame_idx).zfill(6))
+                        if not os.path.exists(os.path.join(self.frame_root_path, video_basename, img_filename)):
+                            cv2.imwrite(os.path.join(self.frame_root_path, video_basename, img_filename), frame)
 
-                    img_filename = "{}.jpg".format(str(frame_idx).zfill(5))
-                    cv2.imwrite(os.path.join(self.frame_root_path, video_basename, img_filename), frame)
+                    
 
                 else:
                     break
@@ -138,10 +150,17 @@ class Generate_Dataset:
             self.h5_file['video_{}'.format(video_idx+1)]['picks'] = np.array(list(picks))
             self.h5_file['video_{}'.format(video_idx+1)]['n_frames'] = n_frames
             self.h5_file['video_{}'.format(video_idx+1)]['fps'] = fps
+            self.h5_file['video_{}'.format(video_idx + 1)]['video_name'] = video_filename.split('.')[0]
             self.h5_file['video_{}'.format(video_idx+1)]['change_points'] = change_points
             self.h5_file['video_{}'.format(video_idx+1)]['n_frame_per_seg'] = n_frame_per_seg
+            self.h5_file['video_{}'.format(video_idx + 1)]['video_dir'] = video_dir
+
 
 if __name__ == "__main__":
-    gen = Generate_Dataset('/data/video_summarization/dataset_SumMe/videos/Air_Force_One.mp4', 'summe_dataset.h5')
+    args = parser.parse_args()
+    video = args.video_dir
+    output = args.output_dir
+    frame_dir="./frames"
+    gen = Generate_Dataset(video,output,frame_dir)
     gen.generate_dataset()
     gen.h5_file.close()

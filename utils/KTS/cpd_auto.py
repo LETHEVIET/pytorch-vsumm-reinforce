@@ -1,5 +1,5 @@
 import numpy as np
-from cpd_nonlin import cpd_nonlin
+from .cpd_nonlin import cpd_nonlin
 
 def cpd_auto(K, ncp, vmax, desc_rate=1, **kwargs):
     """Main interface
@@ -83,4 +83,3 @@ def eval_cost(K, cps, score, vmax):
     N = K.shape[0]
     penalty = (vmax*len(cps)/(2.0*N))*(np.log(float(N)/len(cps))+1)
     return score/float(N) + penalty
-
